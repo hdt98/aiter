@@ -4783,13 +4783,17 @@ void dispatchAllReduceMhcPost1Stage(hipStream_t stream,
         throw std::runtime_error("AR+MHC post epilogue requires pack-aligned hidden/stride");
     }
     const int n_packs = hidden_size / pack_size;
-    if(n_packs > 512)
+    if(n_packs > 1024)
     {
-        throw std::runtime_error("AR+MHC post epilogue hidden dim too large for two-way CTA");
+        throw std::runtime_error("AR+MHC post epilogue hidden dim too large for one-way CTA");
     }
 
     RankData* ptrs        = get_buffer_RD(stream, input);
     const bool use_two_way = m >= 8192;
+    if(use_two_way && n_packs > 512)
+    {
+        throw std::runtime_error("AR+MHC post epilogue hidden dim too large for two-way CTA");
+    }
     dim3 block(use_two_way ? n_packs * 2 : n_packs);
     dim3 grid(std::min(m, kMaxBlocks));
 

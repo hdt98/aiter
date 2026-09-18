@@ -265,6 +265,50 @@ void fused_allreduce_mhc_post_one_stage(fptr_t _fa,
     const int hidden  = static_cast<int>(residual_in.size(-1));
     const int stride  = static_cast<int>(residual_in.stride(0));
 
+    constexpr int pack_size = 16 / sizeof(opus::bf16_t);
+    const int n_packs = hidden / pack_size;
+    const bool use_two_way = m >= 8192;
+    if(use_two_way && n_packs > 512)
+    {
+        switch(inp.dtype())
+        {
+        case AITER_DTYPE_bf16:
+            run_ar_mhc_post_large_m<opus::bf16_t>(
+                fa,
+                stream,
+                reinterpret_cast<opus::bf16_t*>(inp.data_ptr()),
+                reinterpret_cast<opus::bf16_t*>(next_residual.data_ptr()),
+                reinterpret_cast<opus::bf16_t*>(residual_in.data_ptr()),
+                reinterpret_cast<float*>(post_layer_mix.data_ptr()),
+                reinterpret_cast<float*>(comb_res_mix.data_ptr()),
+                m,
+                input_n,
+                hidden,
+                stride,
+                reg_ptr,
+                reg_bytes);
+            return;
+        case AITER_DTYPE_fp16:
+            run_ar_mhc_post_large_m<opus::fp16_t>(
+                fa,
+                stream,
+                reinterpret_cast<opus::fp16_t*>(inp.data_ptr()),
+                reinterpret_cast<opus::fp16_t*>(next_residual.data_ptr()),
+                reinterpret_cast<opus::fp16_t*>(residual_in.data_ptr()),
+                reinterpret_cast<float*>(post_layer_mix.data_ptr()),
+                reinterpret_cast<float*>(comb_res_mix.data_ptr()),
+                m,
+                input_n,
+                hidden,
+                stride,
+                reg_ptr,
+                reg_bytes);
+            return;
+        default:
+            throw std::runtime_error("fused AR+MHC post one-stage supports fp16/bf16 activations");
+        }
+    }
+
     copy_input_to_registered_buffer(inp, m, input_n, stream, reg_ptr, reg_bytes);
 
     switch(inp.dtype())
