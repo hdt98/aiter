@@ -3362,6 +3362,13 @@ class CustomAllreduce
     std::vector<void*> graph_unreg_output_buffers_;
     // a map from IPC handles to opened IPC pointers
     std::map<IPC_KEY, char*> ipc_handles_;
+    // registry state saved by mark_graph_buffers, restored by
+    // reset_graph_buffers
+    bool graph_mark_set_ = false;
+    RankData *graph_mark_base_, *graph_mark_end_;
+    std::unordered_map<void*, RankData*> graph_mark_inputs_;
+    std::unordered_map<void*, RankData*> graph_mark_outputs_;
+    std::map<IPC_KEY, char*> graph_mark_ipc_handles_;
 
     template <typename T>
     T* local_tmp_reduced_ptr() const
@@ -3496,6 +3503,7 @@ class CustomAllreduce
                 data.ptrs[i] = self;
             }
         }
+        graph_mark_set_ = false; // a reset would hand this slot to a graph
         auto d_data = d_rank_data_base_++;
         HIP_CALL(hipMemcpy(d_data, &data, sizeof(RankData), hipMemcpyHostToDevice));
         input_buffer[self] = d_data;
@@ -3520,6 +3528,7 @@ class CustomAllreduce
                 data.ptrs[i] = self;
             }
         }
+        graph_mark_set_ = false; // a reset would hand this slot to a graph
         auto d_data = d_rank_data_base_++;
         HIP_CALL(hipMemcpy(d_data, &data, sizeof(RankData), hipMemcpyHostToDevice));
         output_buffers_[self] = d_data;
@@ -3665,6 +3674,50 @@ class CustomAllreduce
         d_rank_data_end_ -= num_output_buffers;
         graph_unreg_input_buffers_.clear();
         graph_unreg_output_buffers_.clear();
+    }
+
+    // Save the registry so a later graph set can be dropped without
+    // leaking its rank-data slots or the peer IPC mappings it opened.
+    void mark_graph_buffers()
+    {
+        if(!graph_unreg_input_buffers_.empty() || !graph_unreg_output_buffers_.empty())
+            throw std::runtime_error("cannot mark graph buffers during a capture");
+        graph_mark_base_         = d_rank_data_base_;
+        graph_mark_end_          = d_rank_data_end_;
+        graph_mark_inputs_       = input_buffer;
+        graph_mark_outputs_      = output_buffers_;
+        graph_mark_ipc_handles_  = ipc_handles_;
+        graph_mark_set_          = true;
+    }
+
+    // Return the registry to the last mark. Every graph captured after the
+    // mark must already be destroyed on every rank: its slots are reused and
+    // the IPC mappings it opened are closed here, so peers can free them.
+    // Returns the number of IPC mappings closed.
+    int64_t reset_graph_buffers()
+    {
+        if(!graph_mark_set_)
+            throw std::runtime_error("graph buffers were never marked");
+        if(!graph_unreg_input_buffers_.empty() || !graph_unreg_output_buffers_.empty())
+            throw std::runtime_error("cannot reset graph buffers during a capture");
+        int64_t closed = 0;
+        for(auto it = ipc_handles_.begin(); it != ipc_handles_.end();)
+        {
+            if(graph_mark_ipc_handles_.count(it->first))
+            {
+                ++it;
+                continue;
+            }
+            HIP_CALL(hipIpcCloseMemHandle(it->second));
+            it = ipc_handles_.erase(it);
+            ++closed;
+        }
+        d_rank_data_base_ = graph_mark_base_;
+        d_rank_data_end_  = graph_mark_end_;
+        input_buffer      = graph_mark_inputs_;
+        output_buffers_   = graph_mark_outputs_;
+        graph_mark_set_   = false;
+        return closed;
     }
 
     /*

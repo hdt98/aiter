@@ -760,6 +760,8 @@ class CustomAllreduce:
             self._ops_get_graph_buffer_count = ops.get_graph_buffer_count
             self._ops_get_graph_buffer_ptrs = None
             self._ops_register_graph_buffers = ops.register_graph_buffers
+            self._ops_mark_graph_buffers = ops.mark_graph_buffers
+            self._ops_reset_graph_buffers = ops.reset_graph_buffers
 
     # max_size: max supported allreduce size
     def __init__(
@@ -1139,6 +1141,23 @@ class CustomAllreduce:
     def register_graph_buffers(self):
         """Batch-register graph-captured buffer addresses."""
         self._pool.flush_graph_buffers(self._ptr)
+
+    def mark_graph_buffers(self):
+        """Save the graph registry; see reset_graph_buffers."""
+        if self.disabled or self._is_gfx1250:
+            return
+        self._ops_mark_graph_buffers(self._ptr)
+
+    def reset_graph_buffers(self) -> int:
+        """Return the graph registry to the last mark.
+
+        Every graph captured since the mark must already be destroyed on
+        every rank. Closes the peer IPC mappings those graphs opened and
+        returns how many were closed.
+        """
+        if self.disabled or self._is_gfx1250:
+            return 0
+        return int(self._ops_reset_graph_buffers(self._ptr))
 
     def _fits_custom_ar_size(self, inp: torch.Tensor, prefill_support: bool = False):
         if self.disabled:

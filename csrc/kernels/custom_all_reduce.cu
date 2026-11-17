@@ -372,6 +372,16 @@ void register_graph_buffers(fptr_t _fa,
     fa->register_graph_buffers(handles.data(), offsets.data());
 }
 
+void mark_graph_buffers(fptr_t _fa)
+{
+    reinterpret_cast<aiter::CustomAllreduce*>(_fa)->mark_graph_buffers();
+}
+
+int64_t reset_graph_buffers(fptr_t _fa)
+{
+    return reinterpret_cast<aiter::CustomAllreduce*>(_fa)->reset_graph_buffers();
+}
+
 // ---- ROCm-specific utilities ----
 
 #ifdef USE_ROCM

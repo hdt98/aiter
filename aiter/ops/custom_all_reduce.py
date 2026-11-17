@@ -224,6 +224,14 @@ def register_graph_buffers(
 
 
 @compile_ops("module_custom_all_reduce", develop=True)
+def mark_graph_buffers(_fa: int) -> None: ...
+
+
+@compile_ops("module_custom_all_reduce", develop=True)
+def reset_graph_buffers(_fa: int) -> int: ...
+
+
+@compile_ops("module_custom_all_reduce", develop=True)
 def allocate_meta_buffer(size: int) -> int: ...
 
 

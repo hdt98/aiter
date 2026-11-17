@@ -707,6 +707,8 @@ namespace py = pybind11;
           py::arg("_fa"),                                                            \
           py::arg("handle_ptrs"),                                                    \
           py::arg("offset_ptrs"));                                                   \
+    m.def("mark_graph_buffers", &aiter::mark_graph_buffers, py::arg("_fa"));         \
+    m.def("reset_graph_buffers", &aiter::reset_graph_buffers, py::arg("_fa"));       \
     m.def("allocate_meta_buffer", &aiter::allocate_meta_buffer, py::arg("size"));    \
     m.def("allocate_data_buffer", &aiter::allocate_data_buffer, py::arg("size"));    \
     m.def("free_meta_buffer", &aiter::free_meta_buffer, py::arg("ptr"));             \
